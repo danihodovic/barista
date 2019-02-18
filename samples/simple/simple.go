@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"barista.run"
+	barista "barista.run"
 	"barista.run/bar"
 	"barista.run/base/click"
 	"barista.run/base/watchers/netlink"
@@ -37,9 +37,7 @@ import (
 	"barista.run/modules/battery"
 	"barista.run/modules/clock"
 	"barista.run/modules/cputemp"
-	"barista.run/modules/github"
 	"barista.run/modules/gsuite/calendar"
-	"barista.run/modules/gsuite/gmail"
 	"barista.run/modules/media"
 	"barista.run/modules/meminfo"
 	"barista.run/modules/netspeed"
@@ -237,53 +235,6 @@ func main() {
 
 	// Weather information comes from OpenWeatherMap.
 	// https://openweathermap.org/api.
-	wthr := weather.New(autoWeatherProvider{}).Output(func(w weather.Weather) bar.Output {
-		iconName := ""
-		switch w.Condition {
-		case weather.Thunderstorm,
-			weather.TropicalStorm,
-			weather.Hurricane:
-			iconName = "stormy"
-		case weather.Drizzle,
-			weather.Hail:
-			iconName = "shower"
-		case weather.Rain:
-			iconName = "downpour"
-		case weather.Snow,
-			weather.Sleet:
-			iconName = "snow"
-		case weather.Mist,
-			weather.Smoke,
-			weather.Whirls,
-			weather.Haze,
-			weather.Fog:
-			iconName = "windy-cloudy"
-		case weather.Clear:
-			if !w.Sunset.IsZero() && time.Now().After(w.Sunset) {
-				iconName = "night"
-			} else {
-				iconName = "sunny"
-			}
-		case weather.PartlyCloudy:
-			iconName = "partly-sunny"
-		case weather.Cloudy, weather.Overcast:
-			iconName = "cloudy"
-		case weather.Tornado,
-			weather.Windy:
-			iconName = "windy"
-		}
-		if iconName == "" {
-			iconName = "warning-outline"
-		} else {
-			iconName = "weather-" + iconName
-		}
-		return outputs.Pango(
-			pango.Icon("typecn-"+iconName), spacer,
-			pango.Textf("%.1f℃", w.Temperature.Celsius()),
-			pango.Textf(" (provided by %s)", w.Attribution).XSmall(),
-		)
-	})
-
 	buildBattOutput := func(i battery.Info, disp *pango.Node) *bar.Segment {
 		if i.Status == battery.Disconnected || i.Status == battery.Unknown {
 			return nil
@@ -426,66 +377,11 @@ func main() {
 
 	grp, _ := collapsing.Group(net, temp, freeMem, loadAvg)
 
-	ghNotify := github.New("%%GITHUB_CLIENT_ID%%", "%%GITHUB_CLIENT_SECRET%%").
-		Output(func(n github.Notifications) bar.Output {
-			if n.Total() == 0 {
-				return nil
-			}
-			out := outputs.Group(
-				pango.Icon("fab-github").
-					Concat(spacer).
-					ConcatTextf("%d", n.Total()))
-			mentions := n["mention"] + n["team_mention"]
-			if mentions > 0 {
-				out.Append(spacer)
-				out.Append(outputs.Pango(
-					pango.Icon("mdi-bell").
-						ConcatTextf("%d", mentions)).
-					Urgent(true))
-			}
-			return out.Glue().OnClick(
-				click.RunLeft("xdg-open", "https://github.com/notifications"))
-		})
-
-	gm := gmail.New(gsuiteOauthConfig, "INBOX").
-		Output(func(i gmail.Info) bar.Output {
-			if i.Unread["INBOX"] == 0 {
-				return nil
-			}
-			return outputs.Pango(
-				pango.Icon("material-email"),
-				spacer,
-				pango.Textf("%d", i.Unread["INBOX"]),
-			).OnClick(click.RunLeft("xdg-open", "https://mail.google.com"))
-		})
-
-	cal := calendar.New(gsuiteOauthConfig).
-		Output(func(evts calendar.EventList) bar.Output {
-			evtsOfInterest := append(evts.InProgress, evts.Alerting...)
-			if len(evtsOfInterest) == 0 && len(evts.Upcoming) > 0 {
-				evtsOfInterest = append(evtsOfInterest, evts.Upcoming[0])
-			}
-			if len(evtsOfInterest) == 0 {
-				return nil
-			}
-			out := outputs.Group().InnerSeparators(false)
-			out.Append(pango.Icon("mdi-calendar"))
-			for _, e := range evtsOfInterest {
-				out.Append(outputs.Textf("%s", e.Start.Format("15:04")).
-					OnClick(calendarNotifyHandler(e)))
-			}
-			return out
-		})
-
 	panic(barista.Run(
 		rhythmbox,
 		grp,
-		gm,
-		cal,
-		ghNotify,
 		vol,
 		batt,
-		wthr,
 		localtime,
 	))
 }
